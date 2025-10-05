@@ -140,7 +140,6 @@ st.markdown(
     <ul>
         <li>Use plain background and good lighting.</li>
         <li>Center your hand in the image for best results.</li>
-        <li>If your `keras_model.h5` is >100MB, consider hosting it externally.</li>
     </ul>
     </div>
     """, unsafe_allow_html=True
