@@ -1,6 +1,6 @@
 streamlit
 opencv-python-headless
 cvzone
-tensorflow==2.12.
+tensorflow==2.12.0
 numpy
 mediapipe
