@@ -1,10 +1,15 @@
 streamlit==1.31.1
 numpy==1.23.5
+
 opencv-python-headless==4.8.1.78
+opencv-contrib-python-headless==4.8.1.78
+
 mediapipe==0.10.9
 tensorflow==2.12.0
 protobuf==3.20.3
+
 rich==13.9.4
+
 
 
 
