@@ -1,9 +1,12 @@
-# app.py
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 import streamlit as st
 import numpy as np
 import cv2
-import os
+
 import math
 from cvzone.HandTrackingModule import HandDetector
 from cvzone.ClassificationModule import Classifier
