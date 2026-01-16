@@ -42,7 +42,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ================= CONSTANTS =================
-IMG_SIZE = 300
+IMG_SIZE = 224
 OFFSET = 20
 
 # ================= LOAD MODEL =================
@@ -134,7 +134,7 @@ if img_file is not None:
             hGap = (IMG_SIZE - hCal) // 2
             imgWhite[hGap:hGap + hCal, :] = imgResize
 
-        imgInput = imgWhite / 255.0
+        imgInput = imgWhite.astype("float32") / 255.0
         imgInput = np.expand_dims(imgInput, axis=0)
 
         prediction = model.predict(imgInput)
