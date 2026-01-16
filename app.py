@@ -1,30 +1,31 @@
+# ================= ENV FIXES (MUST BE AT TOP) =================
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
+# ================= IMPORTS =================
 import streamlit as st
 import numpy as np
 import cv2
-
 import math
-from cvzone.HandTrackingModule import HandDetector
-from cvzone.ClassificationModule import Classifier
+import mediapipe as mp
+import tensorflow as tf
 
-# ---------------- Page Config ----------------
+# ================= PAGE CONFIG =================
 st.set_page_config(
     page_title="Sign Language Detector",
     layout="wide",
     page_icon="🖐️"
 )
 
-# ---------------- Sidebar ----------------
+# ================= SIDEBAR =================
 st.sidebar.title("⚙️ Options")
 st.sidebar.markdown("""
 **Instructions**
 - Use good lighting
 - Plain background
-- Center your hand
+- Keep full hand visible
 """)
 
 img_source = st.sidebar.radio(
@@ -33,41 +34,38 @@ img_source = st.sidebar.radio(
     index=0
 )
 
-# ---------------- Title ----------------
+# ================= TITLE =================
 st.markdown("""
 <div style="text-align:center; background:#6C63FF; padding:10px; border-radius:10px">
 <h1 style="color:white;">🖐️ Sign Language Detector (A–Z)</h1>
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------- Constants ----------------
+# ================= CONSTANTS =================
 IMG_SIZE = 300
 OFFSET = 20
 
-# ---------------- Load Model ----------------
+# ================= LOAD MODEL =================
 @st.cache_resource
-def load_resources():
-    model_path = "Model/keras_model.h5"
-    labels_path = "Model/labels.txt"
+def load_model_and_labels():
+    model = tf.keras.models.load_model("Model/keras_model.h5", compile=False)
 
-    if not os.path.exists(model_path) or not os.path.exists(labels_path):
-        return None, None, None
-
-    detector = HandDetector(maxHands=1)
-    classifier = Classifier(model_path, labels_path)
-
-    with open(labels_path, "r") as f:
+    with open("Model/labels.txt", "r") as f:
         labels = [line.strip() for line in f if line.strip()]
 
-    return detector, classifier, labels
+    return model, labels
 
-detector, classifier, labels = load_resources()
+model, labels = load_model_and_labels()
 
-if detector is None:
-    st.error("❌ Model files not found. Add keras_model.h5 & labels.txt inside Model/")
-    st.stop()
+# ================= MEDIAPIPE HANDS =================
+mp_hands = mp.solutions.hands
+hands_detector = mp_hands.Hands(
+    static_image_mode=True,
+    max_num_hands=1,
+    min_detection_confidence=0.6
+)
 
-# ---------------- Layout ----------------
+# ================= LAYOUT =================
 col1, col2 = st.columns(2)
 
 with col1:
@@ -85,78 +83,82 @@ with col1:
 with col2:
     st.subheader("🔍 Result")
     result_placeholder = st.empty()
-    image_placeholder = st.empty()
 
-# ---------------- Processing ----------------
+# ================= PROCESSING =================
 if img_file is not None:
     file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
     if img is None:
-        st.error("Invalid image file")
+        st.error("Invalid image")
         st.stop()
 
-    hands, _ = detector.findHands(img)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    result = hands_detector.process(img_rgb)
 
-    if not hands:
+    if not result.multi_hand_landmarks:
         result_placeholder.info("No hand detected")
-        image_placeholder.image(
-            cv2.cvtColor(img, cv2.COLOR_BGR2RGB),
-            caption="Input Image"
-        )
+        st.image(img_rgb, caption="Input Image")
     else:
-        hand = hands[0]
-        x, y, w, h = hand["bbox"]
+        h_img, w_img, _ = img.shape
+        hand_landmarks = result.multi_hand_landmarks[0]
 
-        h_img, w_img = img.shape[:2]
-        x1 = max(0, x - OFFSET)
-        y1 = max(0, y - OFFSET)
-        x2 = min(w_img, x + w + OFFSET)
-        y2 = min(h_img, y + h + OFFSET)
+        x_list = [lm.x * w_img for lm in hand_landmarks.landmark]
+        y_list = [lm.y * h_img for lm in hand_landmarks.landmark]
+
+        x_min, x_max = int(min(x_list)), int(max(x_list))
+        y_min, y_max = int(min(y_list)), int(max(y_list))
+
+        x1 = max(0, x_min - OFFSET)
+        y1 = max(0, y_min - OFFSET)
+        x2 = min(w_img, x_max + OFFSET)
+        y2 = min(h_img, y_max + OFFSET)
 
         imgCrop = img[y1:y2, x1:x2]
 
         imgWhite = np.ones((IMG_SIZE, IMG_SIZE, 3), np.uint8) * 255
+
+        h, w = imgCrop.shape[:2]
         aspectRatio = h / w
 
-        try:
-            if aspectRatio > 1:
-                k = IMG_SIZE / h
-                wCal = math.ceil(k * w)
-                imgResize = cv2.resize(imgCrop, (wCal, IMG_SIZE))
-                wGap = (IMG_SIZE - wCal) // 2
-                imgWhite[:, wGap:wGap + wCal] = imgResize
-            else:
-                k = IMG_SIZE / w
-                hCal = math.ceil(k * h)
-                imgResize = cv2.resize(imgCrop, (IMG_SIZE, hCal))
-                hGap = (IMG_SIZE - hCal) // 2
-                imgWhite[hGap:hGap + hCal, :] = imgResize
+        if aspectRatio > 1:
+            k = IMG_SIZE / h
+            wCal = math.ceil(k * w)
+            imgResize = cv2.resize(imgCrop, (wCal, IMG_SIZE))
+            wGap = (IMG_SIZE - wCal) // 2
+            imgWhite[:, wGap:wGap + wCal] = imgResize
+        else:
+            k = IMG_SIZE / w
+            hCal = math.ceil(k * h)
+            imgResize = cv2.resize(imgCrop, (IMG_SIZE, hCal))
+            hGap = (IMG_SIZE - hCal) // 2
+            imgWhite[hGap:hGap + hCal, :] = imgResize
 
-            prediction, index = classifier.getPrediction(imgWhite, draw=False)
-            label = labels[index]
+        imgInput = imgWhite / 255.0
+        imgInput = np.expand_dims(imgInput, axis=0)
 
-            result_placeholder.markdown(
-                f"""
-                <div style="background:#FFD700; padding:10px; border-radius:10px; text-align:center">
-                <h2>Predicted Sign: {label}</h2>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        prediction = model.predict(imgInput)
+        index = np.argmax(prediction)
+        label = labels[index]
 
-            c1, c2 = st.columns(2)
-            c1.image(cv2.cvtColor(imgCrop, cv2.COLOR_BGR2RGB), caption="Cropped Hand")
-            c2.image(cv2.cvtColor(imgWhite, cv2.COLOR_BGR2RGB), caption="Model Input")
+        result_placeholder.markdown(
+            f"""
+            <div style="background:#FFD700; padding:10px; border-radius:10px; text-align:center">
+            <h2>Predicted Sign: {label}</h2>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        except Exception as e:
-            st.error(f"Processing error: {e}")
+        c1, c2 = st.columns(2)
+        c1.image(cv2.cvtColor(imgCrop, cv2.COLOR_BGR2RGB), caption="Cropped Hand")
+        c2.image(imgWhite, caption="Model Input (300×300)")
 
-# ---------------- Footer ----------------
+# ================= FOOTER =================
 st.markdown("---")
 st.markdown("""
 💡 **Tips**
 - Plain background
-- Full hand visible
-- Good lighting
+- Keep fingers visible
+- Good lighting improves accuracy
 """)
