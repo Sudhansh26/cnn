@@ -10,6 +10,48 @@ import cv2
 import mediapipe as mp
 import tensorflow as tf
 
+st.markdown("""
+<style>
+/* Page background */
+.main {
+    background: linear-gradient(135deg, #f5f7fa, #e4ecf7);
+}
+
+/* Title */
+h1, h2, h3 {
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 600;
+}
+
+/* Card effect */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+/* Radio buttons */
+div[role="radiogroup"] > label {
+    background: white;
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-right: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+/* Success box */
+.stSuccess {
+    border-radius: 12px;
+    font-size: 18px;
+}
+
+/* Camera box */
+video {
+    border-radius: 16px !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ================= PAGE CONFIG (MOBILE SAFE) =================
 st.set_page_config(
     page_title="Sign Language Detector",
