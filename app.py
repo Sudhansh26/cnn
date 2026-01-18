@@ -3,8 +3,8 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Sign Language Detector (A–Z)",
-    page_icon="✋",
-    layout="wide"
+    layout="wide",
+    page_icon="🖐️"
 )
 
 # ================= ENV FIXES =================
@@ -13,144 +13,176 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 # ================= IMPORTS =================
-import numpy as np
 import cv2
+import numpy as np
 import mediapipe as mp
 import tensorflow as tf
 
-# ================= CUSTOM CSS (REACT-LIKE UI) =================
+# ================= GLOBAL STYLES =================
 st.markdown("""
 <style>
-body { background-color:#f6f7fb; }
-
+body {
+    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+}
+.card {
+    background: rgba(255,255,255,0.90);
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+}
 .title {
     text-align:center;
-    font-size:44px;
-    font-weight:900;
-    margin-bottom:5px;
+    font-size:42px;
+    font-weight:800;
 }
 .subtitle {
     text-align:center;
-    color:#666;
-    margin-bottom:40px;
+    color:#555;
+    font-size:16px;
 }
-.card {
-    background:white;
-    border-radius:20px;
-    padding:25px;
-    box-shadow:0 15px 35px rgba(0,0,0,0.12);
-}
-.card:hover {
-    transform: translateY(-4px);
-}
-.result {
-    font-size:52px;
-    font-weight:900;
-    color:#6C63FF;
+.pred {
+    background:#ecfeff;
+    padding:20px;
+    border-radius:16px;
     text-align:center;
-}
-.mode {
-    font-size:18px;
-    font-weight:600;
-}
-.footer {
-    text-align:center;
-    color:#888;
-    margin-top:40px;
+    font-size:26px;
+    font-weight:700;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= TITLE =================
-st.markdown('<div class="title">✋ Sign Language Detector (A–Z)</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Upload an image or use live camera to detect hand signs</div>', unsafe_allow_html=True)
+# ================= CONSTANTS =================
+IMG_SIZE = 224
+OFFSET = 20
 
 # ================= LOAD MODEL =================
 @st.cache_resource
-def load_model():
+def load_model_and_labels():
     model = tf.keras.models.load_model("Model/keras_model.h5", compile=False)
-    with open("Model/labels.txt") as f:
-        labels = [l.strip() for l in f]
+    with open("Model/labels.txt", "r") as f:
+        labels = [l.strip() for l in f if l.strip()]
     return model, labels
 
-model, labels = load_model()
+model, labels = load_model_and_labels()
 
-# ================= MEDIAPIPE =================
+# ================= MEDIAPIPE (STABLE CONFIG) =================
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 hands = mp_hands.Hands(
-    static_image_mode=False,
+    static_image_mode=True,     # REQUIRED for Streamlit
     max_num_hands=1,
-    min_detection_confidence=0.3,
-    min_tracking_confidence=0.3
+    model_complexity=0,         # Cloud-safe
+    min_detection_confidence=0.15,
+    min_tracking_confidence=0.15
 )
 
-# ================= MODE SELECTION =================
+# ================= PREPROCESS =================
+def preprocess(img):
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    img = cv2.convertScaleAbs(img, alpha=1.3, beta=30)
+    return img
+
+# ================= HEADER =================
+st.markdown('<div class="title">🖐️ Sign Language Detector (A–Z)</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Upload an image or use live camera</div>', unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ================= MODE SELECT =================
 mode = st.radio(
     "Choose Mode",
     ["📷 Live Camera", "🖼 Upload Image"],
     horizontal=True
 )
 
-col1, col2 = st.columns([1.2, 1])
+# ================= LAYOUT =================
+left, right = st.columns(2, gap="large")
 
-# ================= IMAGE INPUT =================
-with col1:
+with left:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    img = None
-
     if mode == "📷 Live Camera":
-        st.markdown('<p class="mode">Live Camera</p>', unsafe_allow_html=True)
-        cam = st.camera_input("Take a photo")
-        if cam:
-            img = cv2.imdecode(np.frombuffer(cam.read(), np.uint8), 1)
-
+        img_file = st.camera_input("Take a photo")
     else:
-        st.markdown('<p class="mode">Upload Image</p>', unsafe_allow_html=True)
-        file = st.file_uploader("Upload JPG / PNG", type=["jpg","jpeg","png"])
-        if file:
-            img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), 1)
-
+        img_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ================= PREDICTION =================
-with col2:
+with right:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    if img is not None:
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = hands.process(img_rgb)
-
-        if not results.multi_hand_landmarks:
-            st.warning("❌ No hand detected")
-            st.image(img_rgb, channels="RGB")
-        else:
-            hand = results.multi_hand_landmarks[0]
-            mp_draw.draw_landmarks(img_rgb, hand, mp_hands.HAND_CONNECTIONS)
-
-            h, w, _ = img.shape
-            xs = [int(lm.x * w) for lm in hand.landmark]
-            ys = [int(lm.y * h) for lm in hand.landmark]
-
-            x1, x2 = max(min(xs)-20,0), min(max(xs)+20,w)
-            y1, y2 = max(min(ys)-20,0), min(max(ys)+20,h)
-
-            crop = img[y1:y2, x1:x2]
-            crop = cv2.resize(crop, (224,224)) / 255.0
-            crop = np.expand_dims(crop, axis=0)
-
-            pred = model.predict(crop, verbose=0)
-            label = labels[np.argmax(pred)]
-
-            st.markdown(f'<div class="result">{label}</div>', unsafe_allow_html=True)
-            st.image(img_rgb, channels="RGB", caption="Hand Detection")
-
-    else:
-        st.info("👈 Upload an image or use camera")
-
+    st.subheader("🔍 Prediction")
+    result_box = st.empty()
+    image_box = st.empty()
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ================= PROCESS IMAGE =================
+if img_file is not None:
+
+    img_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(img_bytes, cv2.IMREAD_COLOR)
+
+    if img is None:
+        st.error("Invalid image.")
+        st.stop()
+
+    img_rgb = preprocess(img)
+    results = hands.process(img_rgb)
+
+    if not results.multi_hand_landmarks:
+        result_box.info("""
+        👋 **Hand not detected**
+
+        ✔ Open your palm  
+        ✔ Move slightly away  
+        ✔ Face palm to camera  
+        ✔ Avoid shadows  
+        """)
+        image_box.image(img_rgb, channels="RGB")
+        st.stop()
+
+    hand_landmarks = results.multi_hand_landmarks[0]
+
+    mp_draw.draw_landmarks(
+        img_rgb,
+        hand_landmarks,
+        mp_hands.HAND_CONNECTIONS
+    )
+
+    h, w, _ = img.shape
+    xs = [int(lm.x * w) for lm in hand_landmarks.landmark]
+    ys = [int(lm.y * h) for lm in hand_landmarks.landmark]
+
+    x1 = max(min(xs) - OFFSET, 0)
+    y1 = max(min(ys) - OFFSET, 0)
+    x2 = min(max(xs) + OFFSET, w)
+    y2 = min(max(ys) + OFFSET, h)
+
+    crop = img[y1:y2, x1:x2]
+
+    if crop.size == 0:
+        st.error("Cropping failed.")
+        st.stop()
+
+    crop = cv2.resize(crop, (IMG_SIZE, IMG_SIZE))
+    inp = crop / 255.0
+    inp = np.expand_dims(inp, axis=0)
+
+    pred = model.predict(inp, verbose=0)
+    label = labels[np.argmax(pred)]
+
+    result_box.markdown(
+        f'<div class="pred">Predicted Sign: <span style="color:#2563eb">{label}</span></div>',
+        unsafe_allow_html=True
+    )
+
+    c1, c2 = st.columns(2)
+    c1.image(img_rgb, caption="Hand Detection", channels="RGB")
+    c2.image(crop, caption="Model Input", channels="RGB")
 
 # ================= FOOTER =================
-st.markdown('<div class="footer">Built with ❤️ using Streamlit · MediaPipe · TensorFlow</div>', unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("""
+💡 **Tips**
+- Keep full hand visible  
+- Face palm toward camera  
+- Avoid blur and shadows  
+""")
