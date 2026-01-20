@@ -32,7 +32,10 @@ def load_model_and_labels():
 model, labels = load_model_and_labels()
 
 # ================= UI =================
-st.markdown("<h2 style='text-align:center'>🖐️ Sign Language Detector (A–Z)</h2>", unsafe_allow_html=True)
+st.markdown(
+    "<h2 style='text-align:center'>🖐️ Sign Language Detector (A–Z)</h2>",
+    unsafe_allow_html=True
+)
 
 mode = st.radio(
     "Choose Mode",
@@ -40,8 +43,8 @@ mode = st.radio(
     horizontal=True
 )
 
-# ================= PROCESS FUNCTION =================
-def process_image(img):
+# ================= IMAGE PROCESS FUNCTION =================
+def detect_and_predict(img):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     with mp.solutions.hands.Hands(
@@ -79,13 +82,13 @@ def process_image(img):
 
         return label, img_rgb
 
-# ================= IMAGE MODE =================
+# ================= UPLOAD IMAGE MODE =================
 if mode == "📸 Upload Image":
     img_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
 
     if img_file:
         img = cv2.imdecode(np.frombuffer(img_file.read(), np.uint8), cv2.IMREAD_COLOR)
-        label, out = process_image(img)
+        label, out = detect_and_predict(img)
 
         if label:
             st.success(f"Prediction: **{label}**")
@@ -100,7 +103,7 @@ else:
 
     if cam:
         img = cv2.imdecode(np.frombuffer(cam.read(), np.uint8), cv2.IMREAD_COLOR)
-        label, out = process_image(img)
+        label, out = detect_and_predict(img)
 
         if label:
             st.success(f"Prediction: **{label}**")
